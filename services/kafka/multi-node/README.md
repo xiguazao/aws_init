@@ -148,13 +148,18 @@ docker exec zookeeper-node1 zookeeper-shell 10.0.1.10:2181 ls /
 ### KRaft模式
 
 #### 1. 生成集群ID
-在任意节点上生成集群ID：
+KRaft模式要求集群ID必须是有效的16字节UUID（通常为base64编码格式）。在任意节点上生成集群ID：
 
 ```bash
 docker run --rm confluentinc/cp-kafka:7.5.0 kafka-storage random-uuid
 ```
 
 将生成的UUID替换所有docker-compose.yml文件中的`CLUSTER_ID`值。
+
+示例生成的UUID格式：
+```
+ciThbX9QTi6aK1rW8rHO9w==
+```
 
 #### 2. 配置节点
 在每个节点上创建相应的目录结构并复制配置文件：
@@ -216,9 +221,37 @@ docker-compose up -d
 1. `KAFKA_NODE_ID`: 每个节点的唯一ID (1, 2, 3)
 2. `KAFKA_CONTROLLER_QUORUM_VOTERS`: 所有Controller节点的信息
 3. `KAFKA_ADVERTISED_LISTENERS`: 节点的对外暴露地址
-4. `CLUSTER_ID`: 整个集群的唯一标识（需要统一）
+4. `CLUSTER_ID`: 整个集群的唯一标识（需要统一，且必须是有效的16字节UUID）
 5. `KAFKA_JMX_HOSTNAME`: 节点的主机名或IP地址
 6. 网络配置和端口映射
+
+## 简单访问验证
+
+您可以使用项目根目录中的验证脚本来测试跨节点部署的Kafka集群：
+
+### 使用simple-test.sh快速验证
+```bash
+# 验证节点1上的Kafka
+../simple-test.sh 10.0.1.10:9092
+
+# 验证节点2上的Kafka
+../simple-test.sh 10.0.1.11:9092
+
+# 指定自定义topic
+../simple-test.sh 10.0.1.10:9092 my-cluster-test
+```
+
+### 使用test-kafka.sh完整验证
+```bash
+# 显示帮助信息
+../test-kafka.sh --help
+
+# 测试节点1
+../test-kafka.sh -b 10.0.1.10:9092
+
+# 完整测试配置
+../test-kafka.sh -b 10.0.1.10:9092 -t cluster-test -m "Hello Multi-node Kafka" -n 3
+```
 
 ## 管理和监控
 

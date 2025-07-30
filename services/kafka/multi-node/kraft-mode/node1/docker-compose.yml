@@ -25,7 +25,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: 10.0.1.10
-      CLUSTER_ID: 'multi-node-kafka-cluster-id'
+      CLUSTER_ID: 'ciro8QZ7T5m7k7FJ8J0new'
     volumes:
       - kafka-data:/var/lib/kafka/data
     ports:
