@@ -1,3 +1,0 @@
-ZK_HOSTS=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
-APPLICATION_SECRET=letmein
-KM_ARGS=-Djava.net.preferIPv4Stack=true

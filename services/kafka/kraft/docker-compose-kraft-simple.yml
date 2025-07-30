@@ -20,7 +20,7 @@ services:
       KAFKA_NUM_PARTITIONS: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      CLUSTER_ID: 'kafka-single-node-cluster'
+      CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
     ports:
       - "9092:9092"
     volumes:
