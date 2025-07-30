@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Elasticsearch数据节点1
+  elasticsearch-node1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: elasticsearch-node1
+    environment:
+      - node.name=es-node1
+      - cluster.name=es-ha-cluster
+      - discovery.seed_hosts=["172.20.0.10","172.20.0.11","172.20.0.12"]
+      - node.roles=["data"]
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-node1-data:/usr/share/elasticsearch/data
+    ports:
+      - "9201:9200"
+      - "9301:9300"
+    networks:
+      es-network:
+        ipv4_address: 172.20.0.11
+    restart: unless-stopped
+
+volumes:
+  es-node1-data:
+    driver: local
+
+networks:
+  es-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

@@ -98,7 +98,7 @@ check_kafka_tools() {
     return 1
 }
 
-# 通过Docker运行Kafka命令
+# 通过Docker运行Kafka命令，使用与Kafka容器相同的网络
 docker_kafka_command() {
     local cmd=$1
     shift
@@ -112,8 +112,8 @@ docker_kafka_command() {
             docker exec $kafka_container $cmd $args
             return $?
         else
-            print_warning "未找到运行中的Kafka容器，使用临时容器"
-            docker run --rm --network host confluentinc/cp-kafka:7.5.0 $cmd $args
+            print_warning "未找到运行中的Kafka容器，使用临时容器并连接到kafka-ha-network网络"
+            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 $cmd $args
             return $?
         fi
     else

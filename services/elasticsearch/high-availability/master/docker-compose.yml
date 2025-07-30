@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Elasticsearch Master节点
+  elasticsearch-master:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: elasticsearch-master
+    environment:
+      - node.name=es-master
+      - cluster.name=es-ha-cluster
+      - discovery.seed_hosts=["172.20.0.10","172.20.0.11","172.20.0.12"]
+      - cluster.initial_master_nodes=["es-master"]
+      - node.roles=["master"]
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-master-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      es-network:
+        ipv4_address: 172.20.0.10
+    restart: unless-stopped
+
+volumes:
+  es-master-data:
+    driver: local
+
+networks:
+  es-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

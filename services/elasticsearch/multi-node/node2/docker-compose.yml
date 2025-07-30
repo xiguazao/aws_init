@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Elasticsearch数据节点2
+  elasticsearch-node2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: elasticsearch-node2
+    environment:
+      - node.name=es-node2
+      - cluster.name=es-multi-node-cluster
+      - discovery.seed_hosts=["10.0.1.10:9300","10.0.1.11:9300","10.0.1.12:9300"]
+      - node.roles=["data"]
+      - network.bind_host=0.0.0.0
+      - network.publish_host=10.0.1.12
+      - transport.port=9300
+      - http.port=9200
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-node2-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - es-network
+    restart: unless-stopped
+
+volumes:
+  es-node2-data:
+    driver: local
+
+networks:
+  es-network:
+    driver: bridge
