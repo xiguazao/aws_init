@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  # Kafka Manager (CMAK) for KRaft mode
+  kafka-manager:
+    image: hlebalbau/kafka-manager:stable
+    container_name: kafka-manager-kraft
+    networks:
+      - kafka-network
+    environment:
+      ZK_HOSTS: 10.0.1.10:9092,10.0.1.11:9092,10.0.1.12:9092
+      APPLICATION_SECRET: letmein
+      KM_ARGS: -Djava.net.preferIPv4Stack=true
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
+
+networks:
+  kafka-network:
+    driver: bridge

@@ -3,6 +3,8 @@
 # AWS Security Group Manager (function library)
 # Source this file to use its functions
 
+source ../config/subnet_config.sh
+
 # Global variables
 declare -A SG_CACHE  # Cache for security group IDs
 
@@ -62,13 +64,20 @@ validate_security_params() {
 manage_security_groups() {
     source ../config/aws_config.sh
     load_aws_config
+    init_subnet_config
 
+    # Try to get VPC_ID from parameter first, then from config
     local VPC_ID=$1
+    
+    # If not provided as parameter, try to get from configuration
+    if [[ -z "$VPC_ID" ]]; then
+        VPC_ID=$(get_vpc_id)
+    fi
     
     validate_security_params
     
     if [[ -z "$VPC_ID" ]]; then
-        echo "Error: VPC ID is required"
+        echo "Error: VPC ID is required. Either provide as parameter or ensure it's saved in configuration."
         exit 1
     fi
 

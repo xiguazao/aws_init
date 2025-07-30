@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  # Kafka Manager (CMAK)
+  kafka-manager:
+    image: hlebalbau/kafka-manager:stable
+    container_name: kafka-manager
+    networks:
+      - kafka-network
+    environment:
+      ZK_HOSTS: 10.0.1.10:2181,10.0.1.11:2181,10.0.1.12:2181
+      APPLICATION_SECRET: letmein
+      KM_ARGS: -Djava.net.preferIPv4Stack=true
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
+
+networks:
+  kafka-network:
+    driver: bridge
