@@ -106,7 +106,15 @@ docker_kafka_command() {
     
     if check_docker; then
         # 尝试找到运行中的Kafka容器
-        local kafka_container=$(docker ps -q -f name=kafka)
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
         if [ -n "$kafka_container" ]; then
             print_info "在容器 $kafka_container 中执行: $cmd $args"
             docker exec $kafka_container $cmd $args
@@ -126,16 +134,16 @@ docker_kafka_command() {
 run_kafka_command() {
     local cmd=$1
     shift
-    local args="$@"
+    local args=("$@")
     
     # 直接尝试运行命令
     if command -v $cmd &> /dev/null; then
-        print_info "执行: $cmd $args"
-        $cmd $args
+        print_info "执行: $cmd ${args[@]}"
+        "$cmd" "${args[@]}"
         return $?
     else
         # 通过Docker运行命令
-        docker_kafka_command $cmd $args
+        docker_kafka_command "$cmd" "${args[@]}"
         return $?
     fi
 }
@@ -146,8 +154,33 @@ test_connection() {
     
     print_info "测试连接到Kafka集群: $bootstrap_server"
     
-    if run_kafka_command kafka-broker-api-versions \
-        --bootstrap-server $bootstrap_server; then
+    if command -v kafka-broker-api-versions &> /dev/null; then
+        print_info "执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+        kafka-broker-api-versions --bootstrap-server $bootstrap_server
+    elif check_docker; then
+        # 尝试找到运行中的Kafka容器
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
+        if [ -n "$kafka_container" ]; then
+            print_info "在容器 $kafka_container 中执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            docker exec $kafka_container kafka-broker-api-versions --bootstrap-server $bootstrap_server
+        else
+            print_info "使用临时容器执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-broker-api-versions --bootstrap-server $bootstrap_server
+        fi
+    else
+        print_error "无法执行kafka-broker-api-versions命令"
+        return 1
+    fi
+    
+    if [ $? -eq 0 ]; then
         print_success "成功连接到Kafka集群"
         return 0
     else
@@ -166,20 +199,66 @@ create_test_topic() {
     print_info "创建测试Topic: $topic"
     
     # 首先检查Topic是否已存在
-    if run_kafka_command kafka-topics \
-        --bootstrap-server $bootstrap_server \
-        --list | grep -q "^${topic}$"; then
-        print_info "Topic $topic 已存在"
-        return 0
+    if command -v kafka-topics &> /dev/null; then
+        if kafka-topics --bootstrap-server $bootstrap_server --list | grep -q "^${topic}$"; then
+            print_info "Topic $topic 已存在"
+            return 0
+        fi
+    elif check_docker; then
+        # 尝试找到运行中的Kafka容器
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
+        if [ -n "$kafka_container" ]; then
+            if docker exec $kafka_container kafka-topics --bootstrap-server $bootstrap_server --list | grep -q "^${topic}$"; then
+                print_info "Topic $topic 已存在"
+                return 0
+            fi
+        else
+            if docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list | grep -q "^${topic}$"; then
+                print_info "Topic $topic 已存在"
+                return 0
+            fi
+        fi
+    else
+        print_error "无法执行kafka-topics命令"
+        return 1
     fi
     
     # 创建Topic
-    if run_kafka_command kafka-topics \
-        --bootstrap-server $bootstrap_server \
-        --create \
-        --topic $topic \
-        --partitions $partitions \
-        --replication-factor $replication_factor; then
+    if command -v kafka-topics &> /dev/null; then
+        print_info "执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+        kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
+    elif check_docker; then
+        # 尝试找到运行中的Kafka容器
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
+        if [ -n "$kafka_container" ]; then
+            print_info "在容器 $kafka_container 中执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            docker exec $kafka_container kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
+        else
+            print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
+        fi
+    else
+        print_error "无法执行kafka-topics命令"
+        return 1
+    fi
+    
+    if [ $? -eq 0 ]; then
         print_success "成功创建Topic: $topic"
         return 0
     else
@@ -194,9 +273,33 @@ list_topics() {
     
     print_info "列出所有Topics:"
     
-    if run_kafka_command kafka-topics \
-        --bootstrap-server $bootstrap_server \
-        --list; then
+    if command -v kafka-topics &> /dev/null; then
+        print_info "执行: kafka-topics --bootstrap-server $bootstrap_server --list"
+        kafka-topics --bootstrap-server $bootstrap_server --list
+    elif check_docker; then
+        # 尝试找到运行中的Kafka容器
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
+        if [ -n "$kafka_container" ]; then
+            print_info "在容器 $kafka_container 中执行: kafka-topics --bootstrap-server $bootstrap_server --list"
+            docker exec $kafka_container kafka-topics --bootstrap-server $bootstrap_server --list
+        else
+            print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --list"
+            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list
+        fi
+    else
+        print_error "无法执行kafka-topics命令"
+        return 1
+    fi
+    
+    if [ $? -eq 0 ]; then
         return 0
     else
         print_error "列出Topics失败"
@@ -215,9 +318,36 @@ send_test_messages() {
     
     for i in $(seq 1 $num_messages); do
         local msg="${message} (消息 $i)"
-        echo "$msg" | run_kafka_command kafka-console-producer \
-            --bootstrap-server $bootstrap_server \
-            --topic $topic
+        
+        # 直接使用Docker运行producer命令
+        if command -v kafka-console-producer &> /dev/null; then
+            echo "$msg" | kafka-console-producer \
+                --bootstrap-server $bootstrap_server \
+                --topic $topic
+        elif check_docker; then
+            # 尝试找到运行中的Kafka容器
+            local kafka_containers=$(docker ps -q -f name=kafka)
+            local kafka_container=""
+            
+            # 获取第一个容器（如果有多个）
+            for container in $kafka_containers; do
+                kafka_container=$container
+                break
+            done
+            
+            if [ -n "$kafka_container" ]; then
+                echo "$msg" | docker exec $kafka_container kafka-console-producer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic
+            else
+                echo "$msg" | docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-producer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic
+            fi
+        else
+            print_error "无法执行kafka-console-producer命令"
+            return 1
+        fi
         
         if [ $? -eq 0 ]; then
             print_info "已发送消息: $msg"
@@ -251,7 +381,15 @@ consume_test_messages() {
                 --timeout-ms 5000
         elif check_docker; then
             # 尝试找到运行中的Kafka容器
-            local kafka_container=$(docker ps -q -f name=kafka)
+            local kafka_containers=$(docker ps -q -f name=kafka)
+            local kafka_container=""
+            
+            # 获取第一个容器（如果有多个）
+            for container in $kafka_containers; do
+                kafka_container=$container
+                break
+            done
+            
             if [ -n "$kafka_container" ]; then
                 timeout 10s docker exec $kafka_container kafka-console-consumer \
                     --bootstrap-server $bootstrap_server \
@@ -273,12 +411,43 @@ consume_test_messages() {
         fi
     else
         # 如果没有timeout命令，直接运行
-        run_kafka_command kafka-console-consumer \
-            --bootstrap-server $bootstrap_server \
-            --topic $topic \
-            --from-beginning \
-            --max-messages $num_messages \
-            --timeout-ms 5000
+        if command -v kafka-console-consumer &> /dev/null; then
+            kafka-console-consumer \
+                --bootstrap-server $bootstrap_server \
+                --topic $topic \
+                --from-beginning \
+                --max-messages $num_messages \
+                --timeout-ms 5000
+        elif check_docker; then
+            # 尝试找到运行中的Kafka容器
+            local kafka_containers=$(docker ps -q -f name=kafka)
+            local kafka_container=""
+            
+            # 获取第一个容器（如果有多个）
+            for container in $kafka_containers; do
+                kafka_container=$container
+                break
+            done
+            
+            if [ -n "$kafka_container" ]; then
+                docker exec $kafka_container kafka-console-consumer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic \
+                    --from-beginning \
+                    --max-messages $num_messages \
+                    --timeout-ms 5000
+            else
+                docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic \
+                    --from-beginning \
+                    --max-messages $num_messages \
+                    --timeout-ms 5000
+            fi
+        else
+            print_error "无法执行kafka-console-consumer命令"
+            return 1
+        fi
     fi
     
     local result=$?
@@ -297,12 +466,37 @@ get_cluster_info() {
     
     print_info "获取集群信息:"
     
-    if run_kafka_command kafka-cluster \
-        --bootstrap-server $bootstrap_server \
-        --describe; then
+    if command -v kafka-cluster &> /dev/null; then
+        print_info "执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
+        kafka-cluster --bootstrap-server $bootstrap_server --describe
+    elif check_docker; then
+        # 尝试找到运行中的Kafka容器
+        local kafka_containers=$(docker ps -q -f name=kafka)
+        local kafka_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $kafka_containers; do
+            kafka_container=$container
+            break
+        done
+        
+        if [ -n "$kafka_container" ]; then
+            print_info "在容器 $kafka_container 中执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            docker exec $kafka_container kafka-cluster --bootstrap-server $bootstrap_server --describe
+        else
+            print_info "使用临时容器执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-cluster --bootstrap-server $bootstrap_server --describe
+        fi
+    else
+        print_warning "未找到kafka-cluster命令，跳过集群信息获取"
+        return 0
+    fi
+    
+    if [ $? -eq 0 ]; then
         return 0
     else
         print_warning "无法获取集群信息 (可能不支持此命令)"
+        return 0  # 即使失败也返回0，因为这是一个可选步骤
     fi
 }
 
