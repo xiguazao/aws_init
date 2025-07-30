@@ -121,7 +121,7 @@ docker_kafka_command() {
             return $?
         else
             print_warning "未找到运行中的Kafka容器，使用临时容器并连接到kafka-ha-network网络"
-            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 $cmd $args
+            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 $cmd $args
             return $?
         fi
     else
@@ -173,7 +173,7 @@ test_connection() {
             docker exec $kafka_container kafka-broker-api-versions --bootstrap-server $bootstrap_server
         else
             print_info "使用临时容器执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
-            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-broker-api-versions --bootstrap-server $bootstrap_server
+            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-broker-api-versions --bootstrap-server $bootstrap_server
         fi
     else
         print_error "无法执行kafka-broker-api-versions命令"
@@ -221,7 +221,7 @@ create_test_topic() {
                 return 0
             fi
         else
-            if docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list | grep -q "^${topic}$"; then
+            if docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list | grep -q "^${topic}$"; then
                 print_info "Topic $topic 已存在"
                 return 0
             fi
@@ -251,7 +251,7 @@ create_test_topic() {
             docker exec $kafka_container kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
         else
             print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
-            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
+            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor
         fi
     else
         print_error "无法执行kafka-topics命令"
@@ -292,7 +292,7 @@ list_topics() {
             docker exec $kafka_container kafka-topics --bootstrap-server $bootstrap_server --list
         else
             print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --list"
-            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list
+            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-topics --bootstrap-server $bootstrap_server --list
         fi
     else
         print_error "无法执行kafka-topics命令"
@@ -340,7 +340,7 @@ send_test_messages() {
                     --bootstrap-server $bootstrap_server \
                     --topic $topic
             else
-                echo "$msg" | docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-producer \
+                echo "$msg" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-console-producer \
                     --bootstrap-server $bootstrap_server \
                     --topic $topic
             fi
@@ -398,7 +398,7 @@ consume_test_messages() {
                     --max-messages $num_messages \
                     --timeout-ms 5000
             else
-                timeout 10s docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
+                timeout 10s docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
                     --bootstrap-server $bootstrap_server \
                     --topic $topic \
                     --from-beginning \
@@ -437,7 +437,7 @@ consume_test_messages() {
                     --max-messages $num_messages \
                     --timeout-ms 5000
             else
-                docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
                     --bootstrap-server $bootstrap_server \
                     --topic $topic \
                     --from-beginning \
@@ -485,7 +485,7 @@ get_cluster_info() {
             docker exec $kafka_container kafka-cluster --bootstrap-server $bootstrap_server --describe
         else
             print_info "使用临时容器执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
-            docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-cluster --bootstrap-server $bootstrap_server --describe
+            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 kafka-cluster --bootstrap-server $bootstrap_server --describe
         fi
     else
         print_warning "未找到kafka-cluster命令，跳过集群信息获取"
