@@ -11,8 +11,13 @@ echo "测试Kafka连接: $BOOTSTRAP_SERVER"
 if command -v kafka-topics &> /dev/null; then
     KAFKA_CMD="kafka-topics"
 elif docker ps &> /dev/null; then
-    # 尝试使用Docker运行，并与Kafka容器在同一网络
-    KAFKA_CMD="docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c kafka-topics"
+    # 尝试使用Docker运行，首先检查是否存在kafka-network
+    if docker network ls | grep -q kafka-network; then
+        KAFKA_CMD="docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c kafka-topics"
+    else
+        # 如果没有kafka-network，则使用默认网络
+        KAFKA_CMD="docker run --rm confluentinc/cp-kafka:7.5.0 bash -c kafka-topics"
+    fi
 else
     echo "错误: 未找到Kafka命令行工具或Docker"
     exit 1
@@ -31,11 +36,29 @@ fi
 
 # 创建测试topic
 echo "=== 创建测试Topic ==="
-$KAFKA_CMD --bootstrap-server $BOOTSTRAP_SERVER --create --topic $TOPIC --partitions 1 --replication-factor 1 2>/dev/null || echo "Topic可能已存在"
+if command -v kafka-topics &> /dev/null; then
+    $KAFKA_CMD --bootstrap-server $BOOTSTRAP_SERVER --create --topic $TOPIC --partitions 1 --replication-factor 1 2>/dev/null || echo "Topic可能已存在"
+else
+    # 使用Docker创建topic
+    if docker network ls | grep -q kafka-network; then
+        docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $BOOTSTRAP_SERVER --create --topic $TOPIC --partitions 1 --replication-factor 1" 2>/dev/null || echo "Topic可能已存在"
+    else
+        docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $BOOTSTRAP_SERVER --create --topic $TOPIC --partitions 1 --replication-factor 1" 2>/dev/null || echo "Topic可能已存在"
+    fi
+fi
 
 # 测试生产消息
 echo "=== 发送测试消息 ==="
-echo "Hello Kafka from test script" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC" 2>/dev/null
+if command -v kafka-console-producer &> /dev/null; then
+    echo "Hello Kafka from test script" | kafka-console-producer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC 2>/dev/null
+else
+    # 使用Docker发送消息
+    if docker network ls | grep -q kafka-network; then
+        echo "Hello Kafka from test script" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC" 2>/dev/null
+    else
+        echo "Hello Kafka from test script" | docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC" 2>/dev/null
+    fi
+fi
 
 if [ $? -eq 0 ]; then
     echo "✓ 成功发送消息到Topic: $TOPIC"
@@ -45,7 +68,18 @@ fi
 
 # 测试消费消息
 echo "=== 消费测试消息 ==="
-timeout 5 docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC --from-beginning --max-messages 1" 2>/dev/null
+if command -v timeout &> /dev/null && command -v kafka-console-consumer &> /dev/null; then
+    timeout 5 kafka-console-consumer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC --from-beginning --max-messages 1 2>/dev/null
+elif docker ps &> /dev/null; then
+    # 使用Docker消费消息
+    if docker network ls | grep -q kafka-network; then
+        timeout 5 docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC --from-beginning --max-messages 1" 2>/dev/null
+    else
+        timeout 5 docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $BOOTSTRAP_SERVER --topic $TOPIC --from-beginning --max-messages 1" 2>/dev/null
+    fi
+else
+    echo "✗ 无法执行消息消费测试"
+fi
 
 if [ $? -eq 0 ]; then
     echo "✓ 成功从Topic消费消息: $TOPIC"
