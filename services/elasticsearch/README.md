@@ -16,21 +16,22 @@ elasticsearch/
 ├── single-node/         # 单节点部署配置
 │   └── docker-compose.yml
 ├── high-availability/   # 高可用部署配置
-│   ├── master/          # Master节点配置
+│   ├── master/          # Master节点配置（包含Kibana）
 │   │   └── docker-compose.yml
 │   ├── node1/           # 数据节点1配置
 │   │   └── docker-compose.yml
 │   └── node2/           # 数据节点2配置
 │   │   └── docker-compose.yml
 ├── multi-node/          # 跨节点高可用集群部署配置
-│   ├── master/          # Master节点配置
+│   ├── master/          # Master节点配置（包含Kibana）
 │   │   └── docker-compose.yml
 │   ├── node1/           # 数据节点1配置
 │   │   └── docker-compose.yml
 │   └── node2/           # 数据节点2配置
 │       └── docker-compose.yml
 ├── kibana/              # Kibana独立配置
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   └── README.md
 ├── README.md            # 说明文档
 └── simple-test.sh       # 简单验证脚本
 ```
@@ -61,7 +62,7 @@ elasticsearch/
 
 ### 单节点部署
 1. 进入[single-node](file:///home/melon/aws_init/services/elasticsearch/single-node)目录
-2. 运行以下命令启动Elasticsearch：
+2. 运行以下命令启动Elasticsearch和Kibana：
    ```bash
    docker-compose up -d
    ```
@@ -76,7 +77,7 @@ elasticsearch/
 2. 分别进入[master](file:///home/melon/aws_init/services/elasticsearch/high-availability/master)、[node1](file:///home/melon/aws_init/services/elasticsearch/high-availability/node1)和[node2](file:///home/melon/aws_init/services/elasticsearch/high-availability/node2)目录
 3. 按顺序启动各节点（建议先启动master节点）：
    ```bash
-   # 在master目录
+   # 在master目录（包含Elasticsearch Master节点和Kibana）
    docker-compose up -d
    
    # 等待master节点启动后，在node1和node2目录分别执行
@@ -106,15 +107,15 @@ elasticsearch/
 
 ### 单节点
 - Elasticsearch: http://localhost:9200
-- Kibana: http://localhost:5601 (如果启用)
+- Kibana: http://localhost:5601
 
 ### 高可用部署
 - Elasticsearch: http://localhost:9200
-- Kibana: http://localhost:5601 (如果启用，需要单独配置)
+- Kibana: http://localhost:5601
 
 ### 跨节点高可用集群部署
 - Elasticsearch: http://<any-node-ip>:9200
-- Kibana: http://<any-node-ip>:5601 (如果启用，需要单独配置)
+- Kibana: http://<master-node-ip>:5601
 
 ## 简单访问验证
 
@@ -180,14 +181,16 @@ curl -X GET "localhost:9200/test-index/_search?pretty" -H 'Content-Type: applica
 '
 ```
 
-## Kibana 配置
+## Kibana 配置与集成
 
-如果需要使用Kibana进行数据可视化，可以使用[kibana/docker-compose.yml](file:///home/melon/aws_init/services/elasticsearch/kibana/docker-compose.yml)文件。
+Kibana已集成到以下部署配置中：
+1. 单节点部署 - Kibana与Elasticsearch在同一配置文件中
+2. 高可用部署 - Kibana集成在Master节点配置中
+3. 跨节点部署 - Kibana集成在Master节点配置中
 
-### 单节点部署中使用Kibana
-单节点配置中已包含Kibana服务，直接启动即可使用。
+### 独立部署Kibana
+如果需要独立部署Kibana，可以使用[kibana](file:///home/melon/aws_init/services/elasticsearch/kibana)目录中的配置：
 
-### 高可用部署中添加Kibana
 1. 进入[kibana](file:///home/melon/aws_init/services/elasticsearch/kibana)目录
 2. 修改`ELASTICSEARCH_HOSTS`环境变量以指向正确的Elasticsearch节点
 3. 启动Kibana：
@@ -195,14 +198,17 @@ curl -X GET "localhost:9200/test-index/_search?pretty" -H 'Content-Type: applica
    docker-compose up -d
    ```
 
-### 跨节点部署中添加Kibana
-1. 在任一节点上创建[kibana](file:///home/melon/aws_init/services/elasticsearch/kibana)目录
-2. 将[kibana/docker-compose.yml](file:///home/melon/aws_init/services/elasticsearch/kibana/docker-compose.yml)复制到该目录
-3. 修改`ELASTICSEARCH_HOSTS`环境变量以指向正确的Elasticsearch节点IP
-4. 启动Kibana：
-   ```bash
-   docker-compose up -d
-   ```
+### Kibana配置说明
+
+Kibana的关键配置包括：
+- `ELASTICSEARCH_HOSTS`: Elasticsearch集群地址列表
+- `SERVER_NAME`: Kibana服务器名称
+
+### 访问Kibana
+
+Kibana默认通过5601端口提供Web界面访问：
+- 单节点和高可用部署: http://localhost:5601
+- 跨节点部署: http://<master-node-ip>:5601
 
 ## 停止和清理
 
@@ -246,6 +252,9 @@ docker-compose down -v
 # 查看Elasticsearch日志
 docker-compose logs elasticsearch
 
+# 查看Kibana日志
+docker-compose logs kibana
+
 # 实时查看日志
 docker-compose logs -f elasticsearch
 ```
@@ -257,6 +266,10 @@ docker-compose logs -f elasticsearch
 4. 确保所有节点使用相同的`cluster.name`
 5. 如果启动时报错"container has already joined cluster"，请清理数据卷后重新启动
 6. 如果遇到内存不足问题，请调整`ES_JAVA_OPTS`中的内存设置
+7. 如果Kibana无法连接到Elasticsearch，请检查：
+   - Elasticsearch服务是否正在运行
+   - 网络连接是否正常
+   - `ELASTICSEARCH_HOSTS`配置是否正确
 
 ## 性能优化建议
 

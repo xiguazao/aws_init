@@ -26,6 +26,9 @@ services:
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
       CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
+      # 添加控制器选举相关配置
+      KAFKA_METADATA_LOG_SEGMENT_BYTES: 104857600
+      KAFKA_CONTROLLER_LOG_LEVEL: INFO
     volumes:
       - kafka1_data:/var/lib/kafka/data
     healthcheck:
@@ -62,6 +65,9 @@ services:
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
       CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
+      # 添加控制器选举相关配置
+      KAFKA_METADATA_LOG_SEGMENT_BYTES: 104857600
+      KAFKA_CONTROLLER_LOG_LEVEL: INFO
     volumes:
       - kafka2_data:/var/lib/kafka/data
     healthcheck:
@@ -98,6 +104,9 @@ services:
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
       CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
+      # 添加控制器选举相关配置
+      KAFKA_METADATA_LOG_SEGMENT_BYTES: 104857600
+      KAFKA_CONTROLLER_LOG_LEVEL: INFO
     volumes:
       - kafka3_data:/var/lib/kafka/data
     healthcheck:
@@ -108,29 +117,6 @@ services:
     restart: unless-stopped
     ports:
       - "9094:9094"
-
-  # Kafka Manager (CMAK)
-  kafka-manager:
-    image: hlebalbau/kafka-manager:stable
-    container_name: kafka-manager
-    networks:
-      - kafka-network
-    depends_on:
-      kafka-broker-1:
-        condition: service_healthy
-      kafka-broker-2:
-        condition: service_healthy
-      kafka-broker-3:
-        condition: service_healthy
-    environment:
-      ZK_HOSTS: kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092
-      APPLICATION_SECRET: letmein
-      KM_ARGS: -Djava.net.preferIPv4Stack=true
-    volumes:
-      - ./kafka-manager-env:/kafka-manager-env
-    ports:
-      - "9000:9000"
-    restart: unless-stopped
 
 volumes:
   kafka1_data:

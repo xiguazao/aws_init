@@ -56,7 +56,7 @@ kafka/
    ```bash
    docker run --rm confluentinc/cp-kafka:7.5.0 kafka-storage random-uuid
    ```
-3. 将生成的UUID替换[docker-compose-kraft.yml](file:///home/melon/aws_init/services/kafka/docker-compose-kraft.yml)文件中的`CLUSTER_ID`值
+3. 将生成的UUID替换[docker-compose-kraft.yml](file:///home/melon/aws_init/services/kafka/kraft/docker-compose-kraft.yml)文件中的`CLUSTER_ID`值
 4. 在当前目录下运行以下命令启动集群：
    ```bash
    docker-compose -f docker-compose-kraft.yml up -d
@@ -73,7 +73,7 @@ kafka/
    ```bash
    docker run --rm confluentinc/cp-kafka:7.5.0 kafka-storage random-uuid
    ```
-3. 将生成的UUID替换[docker-compose-kraft-simple.yml](file:///home/melon/aws_init/services/kafka/docker-compose-kraft-simple.yml)文件中的`CLUSTER_ID`值
+3. 将生成的UUID替换[docker-compose-kraft-simple.yml](file:///home/melon/aws_init/services/kafka/kraft/docker-compose-kraft-simple.yml)文件中的`CLUSTER_ID`值
 4. 在当前目录下运行以下命令启动集群：
    ```bash
    docker-compose -f docker-compose-kraft-simple.yml up -d
@@ -270,6 +270,11 @@ docker-compose logs -f kafka-broker-1
 4. 对于简化版，注意replication-factor必须小于等于broker数量
 5. KRaft模式是较新的功能，在生产环境中使用前请充分测试
 6. KRaft模式要求集群ID必须是有效的16字节UUID（通常为base64编码格式）
+7. 如果在KRaft模式下看到控制器选举相关的错误（如NotControllerException），请检查以下配置：
+   - 确保所有节点的`KAFKA_CONTROLLER_QUORUM_VOTERS`配置一致
+   - 确保每个节点的`KAFKA_NODE_ID`唯一且在voters列表中正确配置
+   - 确保网络连接正常，各节点可以互相访问controller端口
+   - 添加了`KAFKA_METADATA_LOG_SEGMENT_BYTES`和`KAFKA_CONTROLLER_LOG_LEVEL`配置以优化控制器行为
 
 ## 测试脚本网络改进说明
 

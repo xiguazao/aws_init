@@ -26,6 +26,9 @@ services:
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: 10.0.1.10
       CLUSTER_ID: 'ciro8QZ7T5m7k7FJ8J0new'
+      # 添加控制器选举相关配置
+      KAFKA_METADATA_LOG_SEGMENT_BYTES: 104857600
+      KAFKA_CONTROLLER_LOG_LEVEL: INFO
     volumes:
       - kafka-data:/var/lib/kafka/data
     ports:

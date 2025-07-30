@@ -459,3 +459,30 @@ logging:
    - 这样可以避免网络问题并提高执行效率
 
 这些改进使测试脚本能够更可靠地与Kafka集群进行交互，特别是在复杂的网络环境中。
+
+## KRaft模式控制器选举问题解决
+
+如果您在KRaft模式下遇到控制器选举相关的错误（如NotControllerException），请检查以下配置：
+
+1. 确保所有节点的`KAFKA_CONTROLLER_QUORUM_VOTERS`配置一致且正确：
+   ```yaml
+   KAFKA_CONTROLLER_QUORUM_VOTERS: '1@10.0.1.10:9093,2@10.0.1.11:9093,3@10.0.1.12:9093'
+   ```
+
+2. 确保每个节点的`KAFKA_NODE_ID`唯一且在voters列表中正确配置
+
+3. 确保网络连接正常，各节点可以互相访问controller端口(9093)
+
+4. 添加了以下配置以优化控制器行为：
+   ```yaml
+   KAFKA_METADATA_LOG_SEGMENT_BYTES: 104857600
+   KAFKA_CONTROLLER_LOG_LEVEL: INFO
+   ```
+
+5. 确保所有节点使用相同的`CLUSTER_ID`
+
+6. 如果问题仍然存在，可以尝试以下步骤：
+   - 清理所有节点的数据卷
+   - 重新生成集群ID
+   - 重新格式化存储目录
+   - 重新启动所有节点
