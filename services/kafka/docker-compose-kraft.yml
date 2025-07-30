@@ -25,7 +25,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
-      CLUSTER_ID: 'kafka-cluster-id'
+      CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
     volumes:
       - kafka1_data:/var/lib/kafka/data
     healthcheck:
@@ -61,7 +61,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
-      CLUSTER_ID: 'kafka-cluster-id'
+      CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
     volumes:
       - kafka2_data:/var/lib/kafka/data
     healthcheck:
@@ -97,7 +97,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_JMX_PORT: 9999
       KAFKA_JMX_HOSTNAME: localhost
-      CLUSTER_ID: 'kafka-cluster-id'
+      CLUSTER_ID: 'ciThbX9QTi6aK1rW8rHO9w=='
     volumes:
       - kafka3_data:/var/lib/kafka/data
     healthcheck:

@@ -240,12 +240,46 @@ consume_test_messages() {
     print_info "消费Topic $topic 中的最新 $num_messages 条消息:"
     
     # 使用超时机制避免无限等待
-    timeout 10s run_kafka_command kafka-console-consumer \
-        --bootstrap-server $bootstrap_server \
-        --topic $topic \
-        --from-beginning \
-        --max-messages $num_messages \
-        --timeout-ms 5000
+    if command -v timeout &> /dev/null; then
+        # 由于timeout不能直接调用bash函数，我们需要特殊处理
+        if command -v kafka-console-consumer &> /dev/null; then
+            timeout 10s kafka-console-consumer \
+                --bootstrap-server $bootstrap_server \
+                --topic $topic \
+                --from-beginning \
+                --max-messages $num_messages \
+                --timeout-ms 5000
+        elif check_docker; then
+            # 尝试找到运行中的Kafka容器
+            local kafka_container=$(docker ps -q -f name=kafka)
+            if [ -n "$kafka_container" ]; then
+                timeout 10s docker exec $kafka_container kafka-console-consumer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic \
+                    --from-beginning \
+                    --max-messages $num_messages \
+                    --timeout-ms 5000
+            else
+                timeout 10s docker run --rm --network kafka-ha-network confluentinc/cp-kafka:7.5.0 kafka-console-consumer \
+                    --bootstrap-server $bootstrap_server \
+                    --topic $topic \
+                    --from-beginning \
+                    --max-messages $num_messages \
+                    --timeout-ms 5000
+            fi
+        else
+            print_error "无法执行kafka-console-consumer命令"
+            return 1
+        fi
+    else
+        # 如果没有timeout命令，直接运行
+        run_kafka_command kafka-console-consumer \
+            --bootstrap-server $bootstrap_server \
+            --topic $topic \
+            --from-beginning \
+            --max-messages $num_messages \
+            --timeout-ms 5000
+    fi
     
     local result=$?
     if [ $result -eq 0 ] || [ $result -eq 124 ]; then  # 124是timeout的退出码
