@@ -1,0 +1,99 @@
+version: '2.2'
+
+services:
+  # Elasticsearch Master Node - IP: 10.170.0.2
+  elasticsearch-master:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: elasticsearch-master
+    network_mode: "host"
+    environment:
+      - node.name=elasticsearch-master
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=["10.170.0.3:9301", "10.170.0.4:9302"]
+      - cluster.initial_master_nodes=["elasticsearch-master"]
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - node.master=true
+      - node.data=false
+      - node.ingest=true
+      - network.host=10.170.0.2
+      - http.port=9200
+      - transport.port=9300
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-master-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    restart: unless-stopped
+
+  # Elasticsearch Data Node 1 - IP: 10.170.0.3
+  elasticsearch-node1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: elasticsearch-node1
+    network_mode: "host"
+    environment:
+      - node.name=elasticsearch-node1
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=["10.170.0.2:9300", "10.170.0.4:9302"]
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - node.master=false
+      - node.data=true
+      - node.ingest=true
+      - network.host=10.170.0.3
+      - http.port=9201
+      - transport.port=9301
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-node1-data:/usr/share/elasticsearch/data
+    ports:
+      - "9201:9201"
+      - "9301:9301"
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch-master
+
+  # Elasticsearch Data Node 2 - IP: 10.170.0.4
+  elasticsearch-node2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: elasticsearch-node2
+    network_mode: "host"
+    environment:
+      - node.name=elasticsearch-node2
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=["10.170.0.2:9300", "10.170.0.3:9301"]
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - node.master=false
+      - node.data=true
+      - node.ingest=true
+      - network.host=10.170.0.4
+      - http.port=9202
+      - transport.port=9302
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-node2-data:/usr/share/elasticsearch/data
+    ports:
+      - "9202:9202"
+      - "9302:9302"
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch-master
+
+volumes:
+  es-master-data:
+    driver: local
+  es-node1-data:
+    driver: local
+  es-node2-data:
+    driver: local

@@ -1,0 +1,28 @@
+version: '2.2'
+
+services:
+  elasticsearch-master:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: elasticsearch-master
+    network_mode: "host"
+    env_file:
+      - elasticsearch.env
+    environment:
+      - ELASTIC_PASSWORD_FILE=/run/secrets/elasticsearch_password
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-master-data:/usr/share/elasticsearch/data
+    secrets:
+      - elasticsearch_password
+    restart: unless-stopped
+
+secrets:
+  elasticsearch_password:
+    file: ./password.txt
+
+volumes:
+  es-master-data:
+    driver: local

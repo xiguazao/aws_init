@@ -1,0 +1,113 @@
+version: '3.3'
+
+services:
+  # Redis 主节点
+  redis-master:
+    image: redis:7.2-alpine
+    container_name: redis-master
+    command: redis-server --appendonly yes
+    networks:
+      redis-net:
+        aliases:
+          - redis-primary
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    volumes:
+      - redis_master_data:/data
+
+  # Redis 从节点1
+  redis-slave1:
+    image: redis:7.2-alpine
+    container_name: redis-slave1
+    command: redis-server --appendonly yes --slaveof redis-master 6379
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    networks:
+      - redis-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    volumes:
+      - redis_slave1_data:/data
+
+  # Redis 从节点2
+  redis-slave2:
+    image: redis:7.2-alpine
+    container_name: redis-slave2
+    command: redis-server --appendonly yes --slaveof redis-master 6379
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    networks:
+      - redis-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+    volumes:
+      - redis_slave2_data:/data
+
+  # Redis 哨兵1
+  sentinel1:
+    image: redis:7.2-alpine
+    container_name: redis-sentinel1
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+    networks:
+      - redis-net
+    volumes:
+      - ./sentinel1.conf:/etc/redis/sentinel.conf
+    ports:
+      - "26379:26379"
+
+  # Redis 哨兵2
+  sentinel2:
+    image: redis:7.2-alpine
+    container_name: redis-sentinel2
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+    networks:
+      - redis-net
+    volumes:
+      - ./sentinel2.conf:/etc/redis/sentinel.conf
+    ports:
+      - "26380:26379"
+
+  # Redis 哨兵3
+  sentinel3:
+    image: redis:7.2-alpine
+    container_name: redis-sentinel3
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+    networks:
+      - redis-net
+    volumes:
+      - ./sentinel3.conf:/etc/redis/sentinel.conf
+    ports:
+      - "26381:26379"
+
+volumes:
+  redis_master_data:
+  redis_slave1_data:
+  redis_slave2_data:
+
+networks:
+  redis-net:
+    driver: bridge
+    name: redis-ha-network
