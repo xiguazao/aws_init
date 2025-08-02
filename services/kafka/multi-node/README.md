@@ -241,7 +241,7 @@ docker-compose up -d
 ../simple-test.sh 10.0.1.10:9092 my-cluster-test
 ```
 
-### 使用test-kafka.sh完整验证
+### 使用test-kafka.sh完整验证（适用于KRaft模式）
 ```bash
 # 显示帮助信息
 ../test-kafka.sh --help
@@ -251,6 +251,18 @@ docker-compose up -d
 
 # 完整测试配置
 ../test-kafka.sh -b 10.0.1.10:9092 -t cluster-test -m "Hello Multi-node Kafka" -n 3
+```
+
+### 使用test-kafka-zk.sh完整验证（适用于ZooKeeper模式）
+```bash
+# 显示帮助信息
+../kafka-zookeeper/test-kafka-zk.sh --help
+
+# 测试节点1
+../kafka-zookeeper/test-kafka-zk.sh -b 10.0.1.10:9092 -z 10.0.1.10:2181
+
+# 完整测试配置
+../kafka-zookeeper/test-kafka-zk.sh -b 10.0.1.10:9092 -z 10.0.1.10:2181 -t cluster-test -m "Hello Multi-node Kafka" -n 3
 ```
 
 ## 管理和监控

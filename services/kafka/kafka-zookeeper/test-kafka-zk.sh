@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Kafka 简单访问验证脚本
-# 用于测试Kafka集群的连接和基本功能
+# Kafka-ZooKeeper模式简单访问验证脚本
+# 用于测试基于ZooKeeper的Kafka集群的连接和基本功能
 
 set -e
 
@@ -14,19 +14,21 @@ NC='\033[0m' # No Color
 
 # 默认配置
 DEFAULT_BOOTSTRAP_SERVER="localhost:9092"
+DEFAULT_ZOOKEEPER_CONNECT="localhost:2181"
 DEFAULT_TOPIC="test-topic"
-DEFAULT_MESSAGE="Hello Kafka!"
+DEFAULT_MESSAGE="Hello Kafka-ZK!"
 DEFAULT_NUM_MESSAGES=3
 
 # 打印使用说明
 print_usage() {
-    echo "Kafka 访问验证脚本"
+    echo "Kafka-ZooKeeper模式访问验证脚本"
     echo ""
     echo "使用方法:"
     echo "  $0 [选项]"
     echo ""
     echo "选项:"
     echo "  -b, --bootstrap-server SERVER  Kafka bootstrap server (默认: $DEFAULT_BOOTSTRAP_SERVER)"
+    echo "  -z, --zookeeper-connect ZK     ZooKeeper连接地址 (默认: $DEFAULT_ZOOKEEPER_CONNECT)"
     echo "  -t, --topic TOPIC             测试Topic名称 (默认: $DEFAULT_TOPIC)"
     echo "  -m, --message MESSAGE         发送的测试消息 (默认: $DEFAULT_MESSAGE)"
     echo "  -n, --num-messages NUM        发送消息数量 (默认: $DEFAULT_NUM_MESSAGES)"
@@ -34,9 +36,9 @@ print_usage() {
     echo ""
     echo "示例:"
     echo "  $0"
-    echo "  $0 -b 10.0.1.10:9092"
+    echo "  $0 -b 10.0.1.10:9092 -z 10.0.1.10:2181"
     echo "  $0 -t my-test-topic -n 5"
-    echo "  $0 -b 10.0.1.10:9092 -t test -m \"Hello Cluster\" -n 10"
+    echo "  $0 -b 10.0.1.10:9092 -z 10.0.1.10:2181 -t test -m \"Hello Cluster\" -n 10"
 }
 
 # 打印带颜色的信息
@@ -142,16 +144,16 @@ docker_kafka_command() {
 run_kafka_command() {
     local cmd=$1
     shift
-    local args=("$@")
+    local args="$@"
     
     # 直接尝试运行命令
     if command -v $cmd &> /dev/null; then
-        print_info "执行: $cmd ${args[@]}"
-        "$cmd" "${args[@]}"
+        print_info "执行: $cmd $args"
+        $cmd $args
         return $?
     else
         # 通过Docker运行命令
-        docker_kafka_command "$cmd" "${args[@]}"
+        docker_kafka_command $cmd $args
         return $?
     fi
 }
@@ -178,10 +180,18 @@ test_connection() {
         
         if [ -n "$kafka_container" ]; then
             print_info "在容器 $kafka_container 中执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
-            docker exec $kafka_container bash -c "kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            docker exec $kafka_container bash -c "kafka-broker-api-versions --bootstrap-server $bootstrap_server" 2>/dev/null || \
+            docker exec $kafka_container bash -c "/usr/bin/kafka-broker-api-versions --bootstrap-server $bootstrap_server"
         else
             print_info "使用临时容器执行: kafka-broker-api-versions --bootstrap-server $bootstrap_server"
-            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-broker-api-versions --bootstrap-server $bootstrap_server" 2>/dev/null || \
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            else
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-broker-api-versions --bootstrap-server $bootstrap_server" 2>/dev/null || \
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-broker-api-versions --bootstrap-server $bootstrap_server"
+            fi
         fi
     else
         print_error "无法执行kafka-broker-api-versions命令"
@@ -195,6 +205,57 @@ test_connection() {
         print_error "无法连接到Kafka集群"
         return 1
     fi
+}
+
+# 测试连接到ZooKeeper
+test_zookeeper_connection() {
+    local zookeeper_connect=$1
+    
+    print_info "测试连接到ZooKeeper: $zookeeper_connect"
+    
+    if command -v zkCli.sh &> /dev/null; then
+        print_info "执行: echo ls / | zkCli.sh -server $zookeeper_connect"
+        echo "ls /" | timeout 5 zkCli.sh -server $zookeeper_connect 2>/dev/null | grep -q "Received"
+        if [ $? -eq 0 ]; then
+            print_success "成功连接到ZooKeeper"
+            return 0
+        fi
+    elif check_docker; then
+        # 尝试找到运行中的ZooKeeper容器
+        local zk_containers=$(docker ps -q -f name=zookeeper)
+        local zk_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $zk_containers; do
+            zk_container=$container
+            break
+        done
+        
+        if [ -n "$zk_container" ]; then
+            print_info "在容器 $zk_container 中执行ZooKeeper连接测试"
+            docker exec $zk_container bash -c "echo ls / | timeout 5 zkCli.sh -server localhost:2181 2>/dev/null | grep -q Received"
+            if [ $? -eq 0 ]; then
+                print_success "成功连接到ZooKeeper"
+                return 0
+            fi
+        else
+            print_info "使用临时容器执行ZooKeeper连接测试"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network zookeeper:3.5 bash -c "echo ls / | timeout 5 zkCli.sh -server zookeeper:2181 2>/dev/null | grep -q Received" 2>/dev/null
+            else
+                # 尝试直接连接到指定的ZooKeeper地址
+                docker run --rm --network host zookeeper:3.5 bash -c "echo ls / | timeout 5 zkCli.sh -server $zookeeper_connect 2>/dev/null | grep -q Received" 2>/dev/null
+            fi
+            if [ $? -eq 0 ]; then
+                print_success "成功连接到ZooKeeper"
+                return 0
+            fi
+        fi
+    fi
+    
+    print_warning "无法测试ZooKeeper连接 (可能未安装zkCli.sh或Docker中无ZooKeeper镜像)"
+    return 0  # 这只是一个可选测试，即使失败也继续执行
 }
 
 # 创建测试Topic
@@ -224,14 +285,25 @@ create_test_topic() {
         done
         
         if [ -n "$kafka_container" ]; then
-            if docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" | grep -q "^${topic}$"; then
+            if docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$" || \
+               docker exec $kafka_container bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$"; then
                 print_info "Topic $topic 已存在"
                 return 0
             fi
         else
-            if docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" | grep -q "^${topic}$"; then
-                print_info "Topic $topic 已存在"
-                return 0
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                if docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$" || \
+                   docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$"; then
+                    print_info "Topic $topic 已存在"
+                    return 0
+                fi
+            else
+                if docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$" || \
+                   docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null | grep -q "^${topic}$"; then
+                    print_info "Topic $topic 已存在"
+                    return 0
+                fi
             fi
         fi
     else
@@ -256,10 +328,18 @@ create_test_topic() {
         
         if [ -n "$kafka_container" ]; then
             print_info "在容器 $kafka_container 中执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
-            docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor" 2>/dev/null || \
+            docker exec $kafka_container bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
         else
             print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
-            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor" 2>/dev/null || \
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            else
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor" 2>/dev/null || \
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --create --topic $topic --partitions $partitions --replication-factor $replication_factor"
+            fi
         fi
     else
         print_error "无法执行kafka-topics命令"
@@ -297,10 +377,18 @@ list_topics() {
         
         if [ -n "$kafka_container" ]; then
             print_info "在容器 $kafka_container 中执行: kafka-topics --bootstrap-server $bootstrap_server --list"
-            docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --list"
+            docker exec $kafka_container bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null || \
+            docker exec $kafka_container bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list"
         else
             print_info "使用临时容器执行: kafka-topics --bootstrap-server $bootstrap_server --list"
-            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null || \
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list"
+            else
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-topics --bootstrap-server $bootstrap_server --list" 2>/dev/null || \
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-topics --bootstrap-server $bootstrap_server --list"
+            fi
         fi
     else
         print_error "无法执行kafka-topics命令"
@@ -344,9 +432,17 @@ send_test_messages() {
             done
             
             if [ -n "$kafka_container" ]; then
-                echo "$msg" | docker exec $kafka_container bash -c "kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic"
+                echo "$msg" | docker exec $kafka_container bash -c "kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic" 2>/dev/null || \
+                echo "$msg" | docker exec $kafka_container bash -c "/usr/bin/kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic"
             else
-                echo "$msg" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic"
+                # 检查是否存在kafka-network
+                if docker network ls | grep -q kafka-network; then
+                    echo "$msg" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic" 2>/dev/null || \
+                    echo "$msg" | docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic"
+                else
+                    echo "$msg" | docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic" 2>/dev/null || \
+                    echo "$msg" | docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-producer --bootstrap-server $bootstrap_server --topic $topic"
+                fi
             fi
         else
             print_error "无法执行kafka-console-producer命令"
@@ -395,9 +491,17 @@ consume_test_messages() {
             done
             
             if [ -n "$kafka_container" ]; then
-                timeout 10s docker exec $kafka_container bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                timeout 10s docker exec $kafka_container bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                timeout 10s docker exec $kafka_container bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
             else
-                timeout 10s docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                # 检查是否存在kafka-network
+                if docker network ls | grep -q kafka-network; then
+                    timeout 10s docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                    timeout 10s docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                else
+                    timeout 10s docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                    timeout 10s docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                fi
             fi
         else
             print_error "无法执行kafka-console-consumer命令"
@@ -424,9 +528,17 @@ consume_test_messages() {
             done
             
             if [ -n "$kafka_container" ]; then
-                docker exec $kafka_container bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                docker exec $kafka_container bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                docker exec $kafka_container bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
             else
-                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                # 检查是否存在kafka-network
+                if docker network ls | grep -q kafka-network; then
+                    docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                    docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                else
+                    docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000" 2>/dev/null || \
+                    docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-console-consumer --bootstrap-server $bootstrap_server --topic $topic --from-beginning --max-messages $num_messages --timeout-ms 5000"
+                fi
             fi
         else
             print_error "无法执行kafka-console-consumer命令"
@@ -466,10 +578,18 @@ get_cluster_info() {
         
         if [ -n "$kafka_container" ]; then
             print_info "在容器 $kafka_container 中执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
-            docker exec $kafka_container bash -c "kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            docker exec $kafka_container bash -c "kafka-cluster --bootstrap-server $bootstrap_server --describe" 2>/dev/null || \
+            docker exec $kafka_container bash -c "/usr/bin/kafka-cluster --bootstrap-server $bootstrap_server --describe"
         else
             print_info "使用临时容器执行: kafka-cluster --bootstrap-server $bootstrap_server --describe"
-            docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "kafka-cluster --bootstrap-server $bootstrap_server --describe" 2>/dev/null || \
+                docker run --rm --network kafka-network confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            else
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "kafka-cluster --bootstrap-server $bootstrap_server --describe" 2>/dev/null || \
+                docker run --rm confluentinc/cp-kafka:7.5.0 bash -c "/usr/bin/kafka-cluster --bootstrap-server $bootstrap_server --describe"
+            fi
         fi
     else
         print_warning "未找到kafka-cluster命令，跳过集群信息获取"
@@ -484,17 +604,64 @@ get_cluster_info() {
     fi
 }
 
+# 获取ZooKeeper中存储的Broker信息
+get_zk_broker_info() {
+    local zookeeper_connect=$1
+    
+    print_info "从ZooKeeper获取Broker信息:"
+    
+    if command -v zkCli.sh &> /dev/null; then
+        print_info "执行: echo ls /brokers/ids | zkCli.sh -server $zookeeper_connect"
+        echo "ls /brokers/ids" | zkCli.sh -server $zookeeper_connect 2>/dev/null | tail -n 1
+        return 0
+    elif check_docker; then
+        # 尝试找到运行中的ZooKeeper容器
+        local zk_containers=$(docker ps -q -f name=zookeeper)
+        local zk_container=""
+        
+        # 获取第一个容器（如果有多个）
+        for container in $zk_containers; do
+            zk_container=$container
+            break
+        done
+        
+        if [ -n "$zk_container" ]; then
+            print_info "在容器 $zk_container 中执行ZooKeeper broker信息查询"
+            docker exec $zk_container bash -c "echo 'ls /brokers/ids' | zkCli.sh -server localhost:2181 2>/dev/null | tail -n 1"
+            return 0
+        else
+            print_info "使用临时容器执行ZooKeeper broker信息查询"
+            # 检查是否存在kafka-network
+            if docker network ls | grep -q kafka-network; then
+                docker run --rm --network kafka-network zookeeper:3.5 bash -c "echo 'ls /brokers/ids' | zkCli.sh -server zookeeper:2181 2>/dev/null | tail -n 1" 2>/dev/null
+            else
+                # 尝试直接连接到指定的ZooKeeper地址
+                docker run --rm --network host zookeeper:3.5 bash -c "echo 'ls /brokers/ids' | zkCli.sh -server $zookeeper_connect 2>/dev/null | tail -n 1" 2>/dev/null
+            fi
+            return 0
+        fi
+    fi
+    
+    print_warning "无法从ZooKeeper获取Broker信息 (可能未安装zkCli.sh或Docker中无ZooKeeper镜像)"
+    return 0  # 这只是一个可选测试，即使失败也继续执行
+}
+
 # 主测试流程
 run_tests() {
     local bootstrap_server=$1
-    local topic=$2
-    local message=$3
-    local num_messages=$4
+    local zookeeper_connect=$2
+    local topic=$3
+    local message=$4
+    local num_messages=$5
     
-    print_info "开始Kafka访问验证测试"
+    print_info "开始Kafka-ZooKeeper模式访问验证测试"
     echo "----------------------------------------"
     
-    # 1. 测试连接
+    # 1. 测试ZooKeeper连接
+    test_zookeeper_connection $zookeeper_connect
+    echo ""
+    
+    # 2. 测试Kafka连接
     if ! test_connection $bootstrap_server; then
         print_error "连接测试失败，退出测试"
         return 1
@@ -502,11 +669,15 @@ run_tests() {
     
     echo ""
     
-    # 2. 获取集群信息
+    # 3. 获取ZooKeeper中的Broker信息
+    get_zk_broker_info $zookeeper_connect
+    echo ""
+    
+    # 4. 获取集群信息
     get_cluster_info $bootstrap_server
     echo ""
     
-    # 3. 创建测试Topic
+    # 5. 创建测试Topic
     if ! create_test_topic $bootstrap_server $topic; then
         print_error "Topic创建失败，退出测试"
         return 1
@@ -514,11 +685,11 @@ run_tests() {
     
     echo ""
     
-    # 4. 列出所有Topics
+    # 6. 列出所有Topics
     list_topics $bootstrap_server
     echo ""
     
-    # 5. 发送测试消息
+    # 7. 发送测试消息
     if ! send_test_messages $bootstrap_server $topic "$message" $num_messages; then
         print_error "消息发送失败"
         return 1
@@ -526,7 +697,7 @@ run_tests() {
     
     echo ""
     
-    # 6. 消费测试消息
+    # 8. 消费测试消息
     if ! consume_test_messages $bootstrap_server $topic $num_messages; then
         print_error "消息消费失败"
         return 1
@@ -540,6 +711,7 @@ run_tests() {
 # 主函数
 main() {
     local bootstrap_server=$DEFAULT_BOOTSTRAP_SERVER
+    local zookeeper_connect=$DEFAULT_ZOOKEEPER_CONNECT
     local topic=$DEFAULT_TOPIC
     local message=$DEFAULT_MESSAGE
     local num_messages=$DEFAULT_NUM_MESSAGES
@@ -549,6 +721,10 @@ main() {
         case $1 in
             -b|--bootstrap-server)
                 bootstrap_server="$2"
+                shift 2
+                ;;
+            -z|--zookeeper-connect)
+                zookeeper_connect="$2"
                 shift 2
                 ;;
             -t|--topic)
@@ -582,7 +758,7 @@ main() {
     fi
     
     # 运行测试
-    if run_tests $bootstrap_server $topic "$message" $num_messages; then
+    if run_tests $bootstrap_server $zookeeper_connect $topic "$message" $num_messages; then
         exit 0
     else
         exit 1

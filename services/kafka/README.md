@@ -19,7 +19,11 @@ kafka/
 ├── docker-compose-kraft.yml        # 完整版KRaft模式Docker Compose配置文件
 ├── docker-compose-kraft-simple.yml # 简化版KRaft模式Docker Compose配置文件
 ├── simple-test.sh                  # 简单验证脚本
-├── test-kafka.sh                   # 完整验证脚本
+├── test-kafka.sh                   # 完整验证脚本（适用于KRaft模式）
+├── kafka-zookeeper/                # ZooKeeper模式专用配置和脚本
+│   ├── docker-compose.yml          # 完整版ZooKeeper模式配置
+│   ├── docker-compose-simple.yml   # 简化版ZooKeeper模式配置
+│   └── test-kafka-zk.sh            # ZooKeeper模式专用测试脚本
 ├── README.md                       # 说明文档
 └── kafka-manager-env               # Kafka Manager环境变量文件
 ```
@@ -30,12 +34,12 @@ kafka/
 1. 确保已安装Docker和Docker Compose
 2. 在当前目录下运行以下命令启动集群：
    ```bash
-   docker-compose up -d
+   docker-compose -f docker-compose.yml up -d
    ```
 3. 等待所有服务启动完成（可能需要几分钟时间）
 4. 验证服务状态：
    ```bash
-   docker-compose ps
+   docker-compose -f docker-compose.yml ps
    ```
 
 ### 简化版ZooKeeper模式集群
@@ -91,6 +95,10 @@ kafka/
   - broker-1: localhost:9092
   - broker-2: localhost:9093
   - broker-3: localhost:9094
+- ZooKeeper:
+  - zk-1: localhost:2181
+  - zk-2: localhost:2182
+  - zk-3: localhost:2183
 - Kafka Manager: http://localhost:9000
 
 ### KRaft模式
@@ -102,10 +110,11 @@ kafka/
 
 ### 简化版
 - Kafka: localhost:9092
+- ZooKeeper: localhost:2181 (仅ZooKeeper模式)
 
 ## 简单访问验证
 
-项目提供了两个验证脚本：
+项目提供了多个验证脚本：
 
 ### 使用simple-test.sh快速验证
 ```bash
@@ -119,7 +128,7 @@ kafka/
 ./simple-test.sh localhost:9092 my-test-topic
 ```
 
-### 使用test-kafka.sh完整验证
+### 使用test-kafka.sh完整验证（适用于KRaft模式）
 ```bash
 # 显示帮助信息
 ./test-kafka.sh --help
@@ -132,6 +141,21 @@ kafka/
 
 # 完整测试配置
 ./test-kafka.sh -b 10.0.1.10:9092 -t test-topic -m "Hello Kafka" -n 5
+```
+
+### 使用test-kafka-zk.sh完整验证（适用于ZooKeeper模式）
+```bash
+# 显示帮助信息
+cd kafka-zookeeper && ./test-kafka-zk.sh --help
+
+# 使用默认配置进行测试
+cd kafka-zookeeper && ./test-kafka-zk.sh
+
+# 指定bootstrap server和zookeeper地址
+cd kafka-zookeeper && ./test-kafka-zk.sh -b 10.0.1.10:9092 -z 10.0.1.10:2181
+
+# 完整测试配置
+cd kafka-zookeeper && ./test-kafka-zk.sh -b 10.0.1.10:9092 -z 10.0.1.10:2181 -t test-topic -m "Hello Kafka" -n 5
 ```
 
 ## 管理Kafka集群
@@ -202,12 +226,12 @@ kafka-console-consumer.sh --topic test-topic --from-beginning --bootstrap-server
 ### ZooKeeper模式完整版
 停止所有服务：
 ```bash
-docker-compose down
+docker-compose -f docker-compose.yml down
 ```
 
 停止并删除所有数据卷：
 ```bash
-docker-compose down -v
+docker-compose -f docker-compose.yml down -v
 ```
 
 ### ZooKeeper模式简化版
@@ -248,7 +272,7 @@ docker-compose -f docker-compose-kraft-simple.yml down -v
 ### 查看日志
 ```bash
 # ZooKeeper模式完整版 - 查看特定服务日志
-docker-compose logs kafka-broker-1
+docker-compose -f docker-compose.yml logs kafka-broker-1
 
 # ZooKeeper模式简化版 - 查看Kafka日志
 docker-compose -f docker-compose-simple.yml logs kafka
@@ -260,7 +284,7 @@ docker-compose -f docker-compose-kraft.yml logs kafka-broker-1
 docker-compose -f docker-compose-kraft-simple.yml logs kafka
 
 # 实时查看日志
-docker-compose logs -f kafka-broker-1
+docker-compose -f docker-compose.yml logs -f kafka-broker-1
 ```
 
 ### 常见问题
@@ -282,10 +306,10 @@ docker-compose logs -f kafka-broker-1
 
 1. **网络连接优化**：
    - 测试脚本现在会优先尝试在与Kafka容器相同的网络中运行
-   - 如果找不到运行中的Kafka容器，则使用`kafka-ha-network`网络运行临时容器
+   - 如果找不到运行中的Kafka容器，则使用`kafka-network`网络运行临时容器
 
 2. **容器间通信**：
-   - 使用`--network kafka-ha-network`参数确保测试容器与Kafka容器在同一网络
+   - 使用`--network kafka-network`参数确保测试容器与Kafka容器在同一网络
    - 提高了测试脚本与Kafka集群之间的通信可靠性
 
 3. **容器执行优化**：
