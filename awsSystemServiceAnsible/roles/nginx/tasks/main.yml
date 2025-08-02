@@ -1,0 +1,50 @@
+---
+- name: Create Nginx configuration directory
+  ansible.builtin.file:
+    path: /etc/nginx
+    state: directory
+    mode: '0755'
+
+- name: Create Nginx docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/nginx/docker-compose.yml
+    mode: '0644'
+
+- name: Create Nginx config directory
+  ansible.builtin.file:
+    path: /opt/nginx/conf
+    state: directory
+    mode: '0755'
+
+- name: Create basic Nginx configuration
+  ansible.builtin.copy:
+    content: |
+      events {
+        worker_connections 1024;
+      }
+      http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        
+        sendfile        on;
+        keepalive_timeout  65;
+        
+        server {
+          listen 80;
+          server_name localhost;
+          
+          location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+          }
+        }
+      }
+    dest: /opt/nginx/conf/nginx.conf
+    mode: '0644'
+
+- name: Deploy Nginx container
+  community.docker.docker_compose:
+    project_src: /opt/nginx
+    state: present
+  ignore_errors: true

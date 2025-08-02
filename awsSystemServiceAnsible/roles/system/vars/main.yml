@@ -1,0 +1,3 @@
+---
+# System role variables
+openssl_version: "3.5.0"

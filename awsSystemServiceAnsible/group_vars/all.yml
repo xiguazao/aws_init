@@ -1,0 +1,6 @@
+---
+# Global variables for all hosts
+docker_compose_version: "v2.38.2"
+openssl_version: "3.5.0"
+redis_version: "8.0.0"
+nginx_version: "1.28.0"

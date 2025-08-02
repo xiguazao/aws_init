@@ -1,0 +1,34 @@
+version: '3.3'
+
+services:
+  terraform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: terraform-aws:latest
+    # image: terraform-was:vv0 
+    container_name: terraform-aws
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_DEFAULT_REGION
+      - AWS_REGION
+    volumes:
+      - .:/terraform
+      # - ~/.aws:/home/terraform/.aws:ro
+      - ~/.aws:/root/.aws:ro
+      - terraform-state:/terraform/state
+    working_dir: /terraform
+    stdin_open: true
+    tty: true
+    networks:
+      - terraform-network
+
+volumes:
+  terraform-state:
+    driver: local
+
+networks:
+  terraform-network:
+    driver: bridge

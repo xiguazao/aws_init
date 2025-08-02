@@ -1,0 +1,20 @@
+---
+# Main playbook for system initialization with roles
+- name: System initialization
+  hosts: all
+  become: yes
+  roles:
+    - system
+    - docker
+
+- name: Deploy Nginx service
+  hosts: proxy_servers
+  become: yes
+  roles:
+    - nginx
+
+- name: Deploy Redis service
+  hosts: redis_servers
+  become: yes
+  roles:
+    - redis

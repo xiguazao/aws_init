@@ -1,0 +1,237 @@
+---
+- name: Check if system is Rocky Linux 9
+  ansible.builtin.command: grep -q "Rocky Linux release 9" /etc/rocky-release
+  register: system_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Fail if not Rocky Linux 9
+  ansible.builtin.fail:
+    msg: "This role only supports Rocky Linux 9.x"
+  when: system_check.rc != 0
+
+- name: Clean and update dnf cache
+  ansible.builtin.dnf:
+    update_cache: yes
+    name: "*"
+    state: latest
+
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: Remove conflicting package groups
+  ansible.builtin.dnf:
+    name:
+      - "@PostgreSQL Database Server"
+      - "@PostgreSQL Database Client"
+      - "@MySQL Database Server"
+      - "@MySQL Database Client"
+      - "@Web Server"
+      - "@Office Suite and Productivity"
+      - "@E-mail Server"
+      - "@Ruby Support"
+      - "@Printing Client"
+    state: absent
+  ignore_errors: true
+
+- name: Install required packages
+  ansible.builtin.dnf:
+    name:
+      - perl-Pod-Html
+      - make
+      - cmake
+      - gcc
+      - gcc-c++
+      - bzip2
+      - bzip2-devel
+      - vim
+      - wget
+      - cronie
+      - lsof
+      - git
+      - rsync
+      - sysstat
+      - bc
+      - expect
+      - zlib-devel
+      - openssl
+      - openssl-devel
+      - ncurses-devel
+      - perl-CPAN
+      - libjpeg-turbo-devel
+      - libpng-devel
+      - freetype-devel
+      - perl-podlators
+      - libxml2-devel
+      - readline-devel
+      - libxslt-devel
+      - libicu-devel
+      - pcre-devel
+      - libevent-devel
+      - curl
+      - curl-devel
+      - krb5-devel
+      - libidn2-devel
+      - zip
+      - unzip
+      - tar
+      - gzip
+      - chrony
+      - iptables
+      - numactl-libs
+      - patch
+      - perl-IPC-Cmd
+      - perl-devel
+      - perl-ExtUtils-MakeMaker
+      - perl-FindBin
+      - procps-ng
+    state: present
+
+- name: Install htop if available
+  ansible.builtin.dnf:
+    name: htop
+    state: present
+  ignore_errors: true
+
+- name: Update critical security packages
+  ansible.builtin.dnf:
+    name:
+      - bash
+      - openssl
+      - glibc
+    state: latest
+
+- name: Enable and start cron service
+  ansible.builtin.systemd:
+    name: crond
+    enabled: yes
+    state: started
+
+- name: Create required groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - mysql
+    - webwww
+
+- name: Create required users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    group: "{{ item.group }}"
+    create_home: no
+    shell: /sbin/nologin
+    state: present
+  loop:
+    - { name: mysql, group: mysql }
+    - { name: webnginx, group: webwww }
+    - { name: webphp, group: webwww }
+
+- name: Create required directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /data_sys/log/mysql/
+    - /data_sys/log/mysql/redolog/
+    - /data_sys/log/nginx/
+    - /data_sys/log/php/
+    - /data_sys/log/ch/
+    - /var/run/mysql/
+    - /var/lib/mysql/
+    - /data_disk1/mysql_data/
+    - /data_disk1/mysql_undolog/
+    - /data_disk1/www/
+    - /data_disk1/www/manager/
+    - /data_sys/log/redis/
+    - /data_disk1/redis
+    - /data_disk1/redis/6379
+
+- name: Remove unnecessary users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: yes
+  loop:
+    - sync
+    - adm
+    - shutdown
+    - halt
+    - operator
+    - gopher
+    - ftp
+    - pppusers
+    - lp
+    - news
+    - uucp
+    - games
+  ignore_errors: true
+
+- name: Set permissions on important directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/etc/security", mode: "0644" }
+    - { path: "/etc/grub2.cfg", mode: "0600" }
+    - { path: "/boot/grub2/grub.cfg", mode: "0600" }
+
+- name: Comment aliases in /etc/aliases
+  ansible.builtin.lineinfile:
+    path: /etc/aliases
+    regexp: "{{ item }}"
+    line: "#\\g<0>"
+    backrefs: yes
+  loop:
+    - '^games:.*$'
+    - '^ingres:.*$'
+    - '^system:.*$'
+    - '^toor:.*$'
+    - '^uucp:.*$'
+    - '^manager:.*$'
+    - '^dumper:.*$'
+    - '^operator:.*$'
+    - '^decode:.*$'
+    - '^root:.*marc.*$'
+
+- name: Set polkit security configuration
+  ansible.builtin.file:
+    path: /usr/bin/pkexec
+    mode: '0755'
+
+- name: Set password minimum length
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    line: "PASS_MIN_LEN 10"
+
+- name: Set auto-logout timeout
+  ansible.builtin.lineinfile:
+    path: /etc/profile
+    line: "TMOUT=1800"
+
+- name: Set history command limit
+  ansible.builtin.replace:
+    path: /etc/profile
+    regexp: 'HISTSIZE=1000'
+    replace: 'HISTSIZE=30'
+
+- name: Apply sysctl configuration
+  ansible.builtin.template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload sysctl configuration
+  ansible.builtin.command: sysctl -p
+  changed_when: true
+
+- name: Add user root to wheel group
+  ansible.builtin.user:
+    name: root
+    groups: wheel
+    append: yes

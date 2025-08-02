@@ -1,0 +1,18 @@
+---
+- name: Create Redis docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/redis/docker-compose.yml
+    mode: '0644'
+
+- name: Create Redis data directory
+  ansible.builtin.file:
+    path: /opt/redis/data
+    state: directory
+    mode: '0755'
+
+- name: Deploy Redis container
+  community.docker.docker_compose:
+    project_src: /opt/redis
+    state: present
+  ignore_errors: true
